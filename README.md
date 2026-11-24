@@ -1,3 +1,5 @@
+> **⚠️ This Data App is for demo/inspiration purposes only. Use at your own risk!**
+
 ![TableauOS screenshot](docs/screenshot.png)
 
 # TableauOS
