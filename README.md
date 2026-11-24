@@ -1,6 +1,6 @@
 # TableauOS
 
-A Tableau viz extension that presents a Tableau site's projects, workbooks and data sources as a small desktop
+A Tableau data app that presents a Tableau site's projects, workbooks and data sources as a small desktop
 (file browser, taskbar, windows, themes) with an Admin Center. **For Tableau site administrators only.**
 
 ## How it works
