@@ -21,5 +21,5 @@ Publish the `.twbx` to your site (Tableau Cloud/Server) from Desktop or via the 
 extension on the site if required.
 
 ## Layout
-- `Tableau Finder.twb` - workbook shell
+- `TableauOS.twb` - workbook shell
 - `Packages/com.tableau.mcp.tableau-finder/` - extension (`content/src/*.js|css`, `config.js`, `manifest.json`)

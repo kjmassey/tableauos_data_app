@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 rm -rf build && mkdir -p build/pkg
-cp "Tableau Finder.twb" build/pkg/TableauOS.twb
+cp "TableauOS.twb" build/pkg/TableauOS.twb
 cp -R Packages build/pkg/
 find build -name .DS_Store -delete
 (cd build/pkg && zip -qr ../TableauOS.twbx .)
