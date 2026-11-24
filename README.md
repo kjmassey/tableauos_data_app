@@ -1,3 +1,5 @@
+![TableauOS screenshot](docs/screenshot.png)
+
 # TableauOS
 
 A Tableau data app that presents a Tableau site's projects, workbooks and data sources as a small desktop
