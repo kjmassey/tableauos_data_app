@@ -620,5 +620,5 @@ td .ac-acts { margin: 0; flex-wrap: nowrap; }
 .tf-block-card { max-width: 440px; margin: 20px; padding: 28px 30px; border-radius: 14px; background: #fff; color: #1d2433; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.45); cursor: default; }
 .tf-block-card h2 { margin: 10px 0 8px; font-size: 20px; }
 .tf-block-card p { margin: 0 0 8px; line-height: 1.45; font-size: 14px; }
-.tf-block-card .tf-block-sub { color: #5a6478; font-size: 12.5px; }
+.tf-block-card .tf-block-sub { color: #5a6478; font-size: 12.5px; word-break: break-word; }
 .tf-block-ico { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto; background: #fde8e8; color: #c0262d; font: 700 26px/44px system-ui, sans-serif; }

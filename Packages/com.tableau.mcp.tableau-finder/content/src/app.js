@@ -205,6 +205,7 @@
     var opts = { method: init.method || 'GET', headers: init.headers || {} };
     if (init.body !== undefined) opts.body = init.body;
     if (asBlob) opts.base64EncodeResponse = true;
+    if (init.urlVariables && Object.keys(init.urlVariables).length) opts.urlVariables = init.urlVariables;
     return tableau.extensions.fetchAsync(url, opts).then(function (res) {
       var body = res.body == null ? '' : res.body;
       var status = Number(res.status) || 0;
@@ -224,17 +225,17 @@
 
   /* =============================== REST backend =============================== */
   function RestBackend(opts) {
-    // REST calls are relative to the host page, e.g. /3.22/sites/{site-id}/workbooks/{workbook-id}
+    // REST calls are relative to the host page, e.g. /3.30/sites/{site-id}/workbooks/{workbook-id}
     this.root = (opts.root || '').replace(/\/+$/, '');
     this.base = (opts.apiBase || '').replace(/\/+$/, '');
     this.site = opts.site || '';
     this.patName = opts.patName;
     this.patSecret = opts.patSecret;
-    this.ver = opts.apiVersion || '3.22';
+    this.ver = opts.apiVersion || '3.30';
     this.token = null; this.siteId = null; this.userId = null;
     this.isDemo = false;
   }
-  // Bridge (inside Tableau): fetchAsync requires a host-relative URL, e.g. /3.22/sites/{site-id}/workbooks/{id}.
+  // Bridge (inside Tableau): fetchAsync requires a host-relative URL, e.g. /3.30/sites/{site-id}/workbooks/{id}.
   // Browser fallback: absolute URL, root + apiBase + '/' + version + path.
   RestBackend.prototype.url = function (p) {
     if (hasBridge()) return (this.bridgePrefix || '') + '/' + this.ver + p;
@@ -256,7 +257,7 @@
     var prefixes = CFG.bridgePrefixes || ['', '/api'], tried = [];
     var attempt = function (i) {
       self.bridgePrefix = prefixes[i];
-      return xfetch(self.url('/sessions/current'), { method: 'GET', headers: { Accept: 'application/json' } })
+      return xfetch(hasBridge() ? '/api/{api-version}/sessions/current' : self.url('/sessions/current'), { method: 'GET', headers: { Accept: 'application/json' } })
         .then(function (r) { return self._parse(r); })
         .then(function (j) {
           var ss = j && j.session; if (!ss || !ss.site || !ss.user) throw new Error('No active Tableau session was returned.');
@@ -267,7 +268,7 @@
         })
         .catch(function (e) {
           if (e.status === 403) e.forbidden = true;
-          tried.push((prefixes[i] || '') + '/' + self.ver + '/sessions/current → ' + (e.status || '') + ' ' + String(e.message).slice(0, 90));
+          tried.push((prefixes[i] || '') + '/{api-version}/sessions/current → ' + (e.status || '') + ' ' + String(e.message).slice(0, 90));
           var retryable = e.status === 404 || e.status === 405 || e.bridge;
           if (retryable && i + 1 < prefixes.length) return attempt(i + 1);
           self.sessionAuth = false; self.token = null;
@@ -338,12 +339,29 @@
       var err = new Error(msg); err.status = r.status; throw err;
     });
   };
+  // Inside Tableau the site's REST allowlist is an exact match against the URL *template* handed to fetchAsync, e.g.
+  // '/api/{api-version}/sites/{site-id}/workbooks/{workbook-id}'. The host fills in {api-version} and {site-id};
+  // every other ID goes in options.urlVariables. Turn '/workbooks/<luid>/views' into that template + variables.
+  var ID_AFTER = { projects: 'project-id', workbooks: 'workbook-id', views: 'view-id', datasources: 'datasource-id', users: 'user-id',
+    groups: 'group-id', jobs: 'job-id', subscriptions: 'subscription-id', extractRefreshes: 'task-id', tags: 'tag-name' };
+  function templatize(path) {
+    var qi = path.indexOf('?'), q = qi >= 0 ? path.slice(qi) : '', segs = path.slice(0, qi >= 0 ? qi : undefined).split('/'), vars = {}, out = [];
+    for (var i = 0; i < segs.length; i++) {
+      var prev = segs[i - 1];
+      if (i > 0 && segs[i] && ID_AFTER[prev]) { var k = ID_AFTER[prev]; try { vars[k] = decodeURIComponent(segs[i]); } catch (e) { vars[k] = segs[i]; } out.push('{' + k + '}'); }
+      else out.push(segs[i]);
+    }
+    return { path: out.join('/') + q, vars: vars };
+  }
   RestBackend.prototype.req = function (method, path, body, asBlob, retried) {
     var self = this;
     var headers = { Accept: asBlob ? '*/*' : 'application/json' };
     if (this.token) headers['X-Tableau-Auth'] = this.token;
     if (body) headers['Content-Type'] = 'application/json';
-    return xfetch(this.url('/sites/' + this.siteId + path), { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined }, asBlob)
+    var url, vars;
+    if (hasBridge()) { var t = templatize(path); url = '/api/{api-version}/sites/{site-id}' + t.path; vars = t.vars; }
+    else url = this.url('/sites/' + this.siteId + path);
+    return xfetch(url, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined, urlVariables: vars }, asBlob)
       .then(function (r) {
         if (r.status === 401 && !retried) return self.signIn().then(function () { return self.req(method, path, body, asBlob, true); });
         return self._parse(r, asBlob);
@@ -1637,7 +1655,7 @@
     if (e && /sessions\/current/.test(m) && !e.forbidden) m = 'Couldn’t sign in with your Tableau login (' + String(m).split('\n')[0].replace(/<[^>]*>/g, ' ').slice(0, 160).trim() + ').';
     if (e && e.bridge) return m + '\nThe request went through tableau.extensions.fetchAsync (the Tableau host), not the browser.';
     if (isNetErr(e)) {
-      return 'The REST API request to ' + (serverRoot() || '') + (CFG.apiBase || '/api') + '/' + (CFG.apiVersion || '3.22') + '/auth/signin didn’t get a response' +
+      return 'The REST API request to ' + (serverRoot() || '') + (CFG.apiBase || '/api') + '/' + (CFG.apiVersion || '3.30') + '/auth/signin didn’t get a response' +
         (e && e.message ? ' (' + e.name + ': ' + e.message + ')' : '') + '.\n' +
         (e.diag ? '\nExtension origin: ' + e.diag.origin + '\n' + (e.diag.reachable
           ? 'Diagnosis: the server IS reachable from this frame (no-cors probe succeeded), so the block is CORS: Tableau doesn’t return Access-Control-Allow-Origin for this origin, and it answers the preflight (OPTIONS) with 405.'
@@ -1666,10 +1684,11 @@
     S.blocked = true;
     try { if (window.TableauOS) TableauOS.close('connect'); } catch (e) { /* ignore */ }
     if (document.getElementById('tf-block')) return;
+    var setup = /allowlist/i.test(note || '');
     var card = h('div', { class: 'tf-block-card' }, [
       h('div', { class: 'tf-block-ico', text: '!' }),
-      h('h2', { text: 'Administrators only' }),
-      h('p', { text: 'TableauOS is only for Tableau site admins. Your account doesn’t have access to this app.' }),
+      h('h2', { text: setup ? 'Site setup needed' : 'Administrators only' }),
+      h('p', { text: setup ? 'This site hasn’t allowed TableauOS to call the Tableau REST API yet. A site admin needs to add the REST endpoints listed in the TableauOS README to the site’s data app REST allowlist.' : 'TableauOS is only for Tableau site admins. Your account doesn’t have access to this app.' }),
       h('p', { class: 'tf-block-sub', text: note || ('Your site role: ' + (role || 'unknown') + '. Contact a site administrator if you need access.') })
     ]);
     var ov = h('div', { id: 'tf-block', class: 'tf-block', role: 'alertdialog', tabindex: '-1', 'aria-modal': 'true', 'aria-label': 'Administrators only' }, [card]);
@@ -1687,7 +1706,7 @@
   }
   function connect(be) {
     S.loading = true; S.ready = false; renderAll();
-    return be.signIn().catch(function (e) { if (e && !e.blocked && hasBridge() && !be.isDemo) { blockApp('', e.forbidden ? 'Your account doesn’t have administrator permissions on this site. Contact a site administrator if you need access.' : 'We couldn’t verify that you’re a site administrator (' + String(e.message || e).split('\n')[0].replace(/<[^>]*>/g, ' ').slice(0, 140).trim() + '), so access is denied.'); e.blocked = true; } throw e; }).then(function () { return adminCheck(be); }).then(function () {
+    return be.signIn().catch(function (e) { if (e && !e.blocked && hasBridge() && !be.isDemo) { blockApp('', e.forbidden ? 'Your account doesn’t have administrator permissions on this site. Contact a site administrator if you need access.' : 'We couldn’t verify that you’re a site administrator (' + String(e.message || e).split('\n').join(' · ').replace(/<[^>]*>/g, ' ').slice(0, 700).trim() + '), so access is denied.'); e.blocked = true; } throw e; }).then(function () { return adminCheck(be); }).then(function () {
       S.be = be; S.siteName = be.siteName; S.userId = be.userId;
       TFConn.set(be);
       thumbs = {}; thumbQueue = [];
